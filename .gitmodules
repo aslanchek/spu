@@ -1,0 +1,3 @@
+[submodule "third-party/stack"]
+	path = third-party/stack
+	url = git@github.com:aslanchek/stack.git

@@ -1,0 +1,11 @@
+in
+in
+mul
+push 4
+in
+in
+mul
+mul
+sub
+out
+htl
