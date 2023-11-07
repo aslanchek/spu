@@ -1,6 +1,4 @@
 [submodule "third-party/stack"]
 	path = third-party/stack
-	url = git@github.com:aslanchek/stack.git
-	branch = main
-[submodule "third-party/stack/"]
 	url = https://github.com/aslanchek/stack.git
+	branch = main
