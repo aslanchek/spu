@@ -48,7 +48,6 @@ void PRETTY_LOG(const char *filename, const ssize_t fileline, const char* functi
 
 long int fsize(int fildes) {
     struct stat meta;
-
     if (fstat(fildes, &meta) < 0) {
       return -1;
     }
@@ -112,6 +111,8 @@ void SPU_dump(SPU *spu) {
 
     fprintf(stderr, "+-----TEXT-----\n");
 
+    fprintf(stderr, "%s", spu->text);
+
     fprintf(stderr, "+--------------\n"
                     "total text size = %zu\n", spu->textsize);
 }
@@ -120,7 +121,7 @@ int SPU_loadtext(SPU *spu, char *filename) {
     // reads programm text from filename
     int fd = open(filename, O_RDONLY);
     if (fd < 0) {
-        PRETTY_ERROR("open");
+        PRETTY_ERROR("open()");
     }
 
     ssize_t size = fsize(fd);
@@ -137,24 +138,6 @@ int SPU_loadtext(SPU *spu, char *filename) {
     close(fd);
     return 0;
 }
-
-/*
- *
- * in
- * out
- *
- * add
- * mul
- * sqrt
- * sin
- * cos
- *
- *
- * push
- * pop
- *
- *
- */
 
 typedef enum {
     HLT  = 0,
@@ -192,45 +175,50 @@ int SPU_run(SPU *spu) {
             spu->cc += strlen(STRCOMMANDS[HLT]);
 
             // action
+            PRETTY_LOG(NOLOGMETA, "Halting...");
             break;
+
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[PUSH], strlen(STRCOMMANDS[PUSH])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[PUSH]);
-            spu->cc += strlen(STRCOMMANDS[PUSH]);
 
-            // action
+            char *argstr = spu->text + spu->cc + strlen(STRCOMMANDS[PUSH]);
+
             // checking text integrity
-            if (*(spu->text + spu->cc) != ' ') {
+            if ( *argstr != ' ') {
                 PRETTY_LOG(NOLOGMETA, "\"%s\" parse error", STRCOMMANDS[PUSH], *(spu->text + spu->cc));
                 return -1;
             }
-            int arg = atoi(spu->text + spu->cc + 1);
-            stack_int_push(&spu->stack, arg IF_VERBOSE(, LOGMETA));
+            int argparsed = atoi( argstr );
+            stack_int_push(&spu->stack, argparsed IF_VERBOSE(, LOGMETA));
+
+            spu->cc += strlen(STRCOMMANDS[PUSH]);
+
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[POP], strlen(STRCOMMANDS[POP])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[POP]);
 
-            // action
-            spu->cc += strlen(STRCOMMANDS[POP]);
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
+
+            spu->cc += strlen(STRCOMMANDS[POP]);
+
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[OUT], strlen(STRCOMMANDS[OUT])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[OUT]);
 
-            // action
-            spu->cc += strlen(STRCOMMANDS[OUT]);
             int top = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             fprintf(stdout, "%d\n", top);
-            //
+
+            spu->cc += strlen(STRCOMMANDS[OUT]);
+
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[IN], strlen(STRCOMMANDS[IN])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[IN]);
-            spu->cc += strlen(STRCOMMANDS[IN]);
 
-            // action
             int tmp = 0;
             scanf("%d", &tmp);
             stack_int_push(&spu->stack, tmp IF_VERBOSE(, LOGMETA));
-            //
+
+            spu->cc += strlen(STRCOMMANDS[IN]);
+
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[ADD], strlen(STRCOMMANDS[ADD])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[ADD]);
-            spu->cc += strlen(STRCOMMANDS[ADD]);
 
             // action
             int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
@@ -238,10 +226,11 @@ int SPU_run(SPU *spu) {
             int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_push(&spu->stack, op1+op2 IF_VERBOSE(, LOGMETA));
-            //
+
+            spu->cc += strlen(STRCOMMANDS[ADD]);
+
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[SUB], strlen(STRCOMMANDS[SUB])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[SUB]);
-            spu->cc += strlen(STRCOMMANDS[SUB]);
 
             // action
             int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
@@ -249,10 +238,10 @@ int SPU_run(SPU *spu) {
             int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_push(&spu->stack, op2-op1 IF_VERBOSE(, LOGMETA));
-            //
+
+            spu->cc += strlen(STRCOMMANDS[SUB]);
         } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[MUL], strlen(STRCOMMANDS[MUL])) ) {
             PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[MUL]);
-            spu->cc += strlen(STRCOMMANDS[MUL]);
 
             // action
             int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
@@ -260,13 +249,17 @@ int SPU_run(SPU *spu) {
             int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_push(&spu->stack, op1*op2 IF_VERBOSE(, LOGMETA));
-            //
+
+            spu->cc += strlen(STRCOMMANDS[MUL]);
+        } else if ( spu->text[spu->cc] == ';' ) {
+            PRETTY_LOG(NOLOGMETA, "; encountered. Skipping...");
+            // skipping commentaries
+            while ( spu->text[spu->cc++] != '\n' );
         } else {
             spu->cc++;
         }
     }
 
-    PRETTY_LOG(NOLOGMETA, "Halting...");
 
     return 0;
 }
@@ -282,7 +275,11 @@ int main(int argc, char *argv[]) {
 
     SPU_loadtext(&main_spu, *argv);
 
-    SPU_run(&main_spu);
+    int ret = SPU_run(&main_spu);
+    if (ret) {
+        PRETTY_LOG(NOLOGMETA, RED("interpeter error"));
+        SPU_dump(&main_spu);
+    }
 
     SPU_destroy(&main_spu);
     return 0;
