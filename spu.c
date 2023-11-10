@@ -1,4 +1,4 @@
-#include <fcntl.h>
+# include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
@@ -16,8 +16,10 @@ DEFINE_STACK(double, "%lf");
 #define ANSI_COLOR_YLW "\x1b[33m"
 #define ANSI_COLOR_RST "\x1b[0m"
 #define RED(str) ANSI_COLOR_RED str ANSI_COLOR_RST
-#define LOGMETA __FILE__, __LINE__, __PRETTY_FUNCTION__
-#define NOLOGMETA NULL, -1, NULL 
+
+#define LOGMETA    __FILE__, __LINE__, __PRETTY_FUNCTION__
+#define NOLOGMETA    NULL,     -1,       NULL 
+
 #define PRETTY_ERROR(issue) fprintf(stderr, RED("[SPU error]")" %s:%d in (%s): %s: %s\n", LOGMETA, issue, strerror(errno)); exit(EXIT_FAILURE);
 #define PRETTY_FAIL(issue)  fprintf(stderr, RED("[SPU error]")" %s:%d in (%s): %s\n", LOGMETA, issue); exit(EXIT_FAILURE);
 
@@ -56,10 +58,10 @@ long int fsize(int fildes) {
 }
 
 typedef struct {
-    stack_int stack;
-    char *text;
-    size_t textsize;
-    size_t cc; // command counter
+    stack_int stack; // stack managing integers
+    char *text;      // pointer to executable text
+    size_t textsize; // size of text (= size of input file)
+    size_t cc;       // command counter
 } SPU;
 
 SPU SPU_init() {
@@ -76,7 +78,8 @@ SPU SPU_init() {
 void SPU_destroy(SPU *spu) {
     stack_int_destroy(&spu->stack);
     free(spu->text);
-    spu->text = NULL;
+
+    bzero(spu, sizeof(SPU));
 }
 
 /*
@@ -140,26 +143,100 @@ int SPU_loadtext(SPU *spu, char *filename) {
 }
 
 typedef enum {
-    HLT  = 0,
-    PUSH = 1,
-    POP  = 2,
-    OUT  = 3,
-    IN   = 4,
-    ADD  = 5,
-    SUB  = 6,
-    MUL  = 7,
+    COMMANDS_NONE,
+    COMMANDS_HLT,
+    COMMANDS_PUSH,
+    COMMANDS_POP,
+    COMMANDS_OUT,
+    COMMANDS_IN,
+    COMMANDS_ADD,
+    COMMANDS_SUB,
+    COMMANDS_MUL,
 } COMMANDS;
 
-char *STRCOMMANDS[] = {
-    /*0*/"hlt" ,
-    /*1*/"push",
-    /*2*/"pop" ,
-    /*3*/"out" ,
-    /*4*/"in"  ,
-    /*5*/"add" ,
-    /*6*/"sub" ,
-    /*7*/"mul" ,
+typedef struct {
+    char *name;
+    size_t len;
+    COMMANDS code;
+} command_t;
+
+#define SIZEOFARR(arr) sizeof((arr))/sizeof((arr[0]))
+
+const command_t INSTRCTN_SET[] = {
+    (command_t) {
+        .name = "hlt",
+        .len  = 3,
+        .code = COMMANDS_HLT,
+    },
+    
+    (command_t) {
+        .name = "push",
+        .len  = 4,
+        .code = COMMANDS_PUSH,
+    },
+    
+    (command_t) {
+        .name = "pop",
+        .len  = 3,
+        .code = COMMANDS_POP,
+    },
+    
+    (command_t) {
+        .name = "out",
+        .len  = 3,
+        .code = COMMANDS_OUT,
+    },
+    
+    (command_t) {
+        .name = "in",
+        .len  = 2,
+        .code = COMMANDS_IN,
+    },
+
+    (command_t) {
+        .name = "add",
+        .len  = 3,
+        .code = COMMANDS_ADD,
+    },
+
+    (command_t) {
+        .name = "sub",
+        .len  = 3,
+        .code = COMMANDS_SUB,
+    },
+
+    (command_t) {
+        .name = "mul",
+        .len  = 3,
+        .code = COMMANDS_MUL,
+    },
 };
+
+const command_t COMMAND_UNPARSED = {
+    .name = "unparsed",
+    .len  = (size_t)-1,
+    .code = COMMANDS_NONE,
+};
+
+
+/*
+ * parses arbitrary string
+ *  [push 123\n]      -> push
+ *  [pop\n]           -> pop
+ *  [addafadsfadsf\n] -> add
+ *  [3.14push\n]      -> unparsed
+ *
+ */
+command_t _parse_cmd(char *strline) {
+    for(size_t i = 0; i < SIZEOFARR(INSTRCTN_SET); i++) {
+        if(strncmp(INSTRCTN_SET[i].name, strline, strlen(INSTRCTN_SET[i].name)) == 0) {
+            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
+            return INSTRCTN_SET[i];
+        }
+    }
+
+    return COMMAND_UNPARSED;
+}
 
 int SPU_run(SPU *spu) {
     assert(!stack_int_validate(&spu->stack));
@@ -170,96 +247,72 @@ int SPU_run(SPU *spu) {
     PRETTY_LOG(NOLOGMETA, "Running text...");
 
     while (spu->cc < spu->textsize) {
-        if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[HLT], strlen(STRCOMMANDS[HLT])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[HLT]);
-            spu->cc += strlen(STRCOMMANDS[HLT]);
+        char *commandstr = (spu->text + spu->cc);
+        command_t toexecute = _parse_cmd(commandstr);
 
-            // action
+        if ( toexecute.code == COMMANDS_HLT ) {
             PRETTY_LOG(NOLOGMETA, "Halting...");
             break;
 
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[PUSH], strlen(STRCOMMANDS[PUSH])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[PUSH]);
+        } else if ( toexecute.code == COMMANDS_PUSH ) {
+            char *argstr = commandstr + toexecute.len;
 
-            char *argstr = spu->text + spu->cc + strlen(STRCOMMANDS[PUSH]);
-
-            // checking text integrity
+            // push argument validation
             if ( *argstr != ' ') {
-                PRETTY_LOG(NOLOGMETA, "\"%s\" parse error", STRCOMMANDS[PUSH], *(spu->text + spu->cc));
+                PRETTY_LOG(NOLOGMETA, "\"%s\" argument parse error: \"%.*s\"",
+                           toexecute.name,
+                           strchr(commandstr, '\n') - commandstr, commandstr);
                 return -1;
             }
             int argparsed = atoi( argstr );
             stack_int_push(&spu->stack, argparsed IF_VERBOSE(, LOGMETA));
 
-            spu->cc += strlen(STRCOMMANDS[PUSH]);
-
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[POP], strlen(STRCOMMANDS[POP])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[POP]);
-
+        } else if ( toexecute.code == COMMANDS_POP ) {
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
 
-            spu->cc += strlen(STRCOMMANDS[POP]);
-
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[OUT], strlen(STRCOMMANDS[OUT])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[OUT]);
-
+        } else if ( toexecute.code == COMMANDS_OUT ) {
             int top = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             fprintf(stdout, "%d\n", top);
 
-            spu->cc += strlen(STRCOMMANDS[OUT]);
-
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[IN], strlen(STRCOMMANDS[IN])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[IN]);
-
+        } else if ( toexecute.code == COMMANDS_IN ) {
             int tmp = 0;
             scanf("%d", &tmp);
             stack_int_push(&spu->stack, tmp IF_VERBOSE(, LOGMETA));
 
-            spu->cc += strlen(STRCOMMANDS[IN]);
-
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[ADD], strlen(STRCOMMANDS[ADD])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[ADD]);
-
-            // action
+        } else if ( toexecute.code == COMMANDS_ADD ) {
             int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
             int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_push(&spu->stack, op1+op2 IF_VERBOSE(, LOGMETA));
+            stack_int_push(&spu->stack, op1 + op2 IF_VERBOSE(, LOGMETA));
 
-            spu->cc += strlen(STRCOMMANDS[ADD]);
-
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[SUB], strlen(STRCOMMANDS[SUB])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[SUB]);
-
-            // action
+        } else if ( toexecute.code == COMMANDS_SUB ) {
             int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
             int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_push(&spu->stack, op2-op1 IF_VERBOSE(, LOGMETA));
+            stack_int_push(&spu->stack, op2 - op1 IF_VERBOSE(, LOGMETA));
 
-            spu->cc += strlen(STRCOMMANDS[SUB]);
-        } else if ( !strncmp(spu->text + spu->cc, STRCOMMANDS[MUL], strlen(STRCOMMANDS[MUL])) ) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", STRCOMMANDS[MUL]);
-
-            // action
+        } else if ( toexecute.code == COMMANDS_MUL ) {
             int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
             int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
             stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_push(&spu->stack, op1*op2 IF_VERBOSE(, LOGMETA));
+            stack_int_push(&spu->stack, op1 * op2 IF_VERBOSE(, LOGMETA));
 
-            spu->cc += strlen(STRCOMMANDS[MUL]);
         } else if ( spu->text[spu->cc] == ';' ) {
             PRETTY_LOG(NOLOGMETA, "; encountered. Skipping...");
             // skipping commentaries
             while ( spu->text[spu->cc++] != '\n' );
+
         } else {
             spu->cc++;
-        }
-    }
+            continue;
 
+        }
+
+        spu->cc += toexecute.len;
+    }
 
     return 0;
 }
