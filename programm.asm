@@ -3,7 +3,7 @@
 in       ;b
 in       ;b
 mul      ;b^2
-push4
+push 4
 in       ;a
 in       ;c
 mul      ;ac
