@@ -161,9 +161,14 @@ command_t _parse_cmd(char *strline) {
         }
     }
 
-    return COMMAND_UNPARSED;
+    return /*command: none*/INSTRCTN_SET[0];
 }
 
+
+#define GENERATE_COMMAND(TXT, OPCODE, ...)\
+    case COMMANDS_##TXT:\
+        __VA_ARGS__\
+        break;\
 
 int SPU_run(SPU *spu) {
     assert(!stack_int_validate(&spu->stack));
@@ -177,66 +182,10 @@ int SPU_run(SPU *spu) {
         char *commandstr = (spu->text + spu->cc);
         command_t toexecute = _parse_cmd(commandstr);
 
-
-        if ( toexecute.code == COMMANDS_HLT ) {
-            PRETTY_LOG(NOLOGMETA, "Halting...");
-            break;
-
-        } else if ( toexecute.code == COMMANDS_PUSH ) {
-            char *argstr = commandstr + toexecute.len;
-
-            // push argument validation
-            if ( *argstr != ' ') {
-                PRETTY_LOG(NOLOGMETA, "\"%s\" argument parse error: \"%.*s\"",
-                           toexecute.name,
-                           strchr(commandstr, '\n') - commandstr, commandstr);
-                return -1;
-            }
-            int argparsed = atoi( argstr );
-            stack_int_push(&spu->stack, argparsed IF_VERBOSE(, LOGMETA));
-
-        } else if ( toexecute.code == COMMANDS_POP ) {
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-
-        } else if ( toexecute.code == COMMANDS_OUT ) {
-            int top = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            fprintf(stdout, "%d\n", top);
-
-        } else if ( toexecute.code == COMMANDS_IN ) {
-            int tmp = 0;
-            scanf("%d", &tmp);
-            stack_int_push(&spu->stack, tmp IF_VERBOSE(, LOGMETA));
-
-        } else if ( toexecute.code == COMMANDS_ADD ) {
-            int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_push(&spu->stack, op1 + op2 IF_VERBOSE(, LOGMETA));
-
-        } else if ( toexecute.code == COMMANDS_SUB ) {
-            int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_push(&spu->stack, op2 - op1 IF_VERBOSE(, LOGMETA));
-
-        } else if ( toexecute.code == COMMANDS_MUL ) {
-            int op1 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            int op2 = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));
-            stack_int_push(&spu->stack, op1 * op2 IF_VERBOSE(, LOGMETA));
-
-        } else if ( spu->text[spu->cc] == ';' ) {
-            PRETTY_LOG(NOLOGMETA, "; encountered. Skipping...");
-            // skipping commentaries
-            while ( spu->text[spu->cc++] != '\n' );
-
-        } else {
-            spu->cc++;
-            continue;
-
+        switch (toexecute.code) {
+            #include "is.dsl"
+            default:
+                break;
         }
 
         spu->cc += toexecute.len;
@@ -244,6 +193,8 @@ int SPU_run(SPU *spu) {
 
     return 0;
 }
+
+#undef GENERATE_COMMAND
 
 
 int main(int argc, char *argv[]) {
