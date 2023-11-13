@@ -1,7 +1,12 @@
 GENERATE_COMMAND(NONE, 0x0, {
-   spu->cc++;
-   continue;
-
+    if ( spu->text[spu->cc] == ';' ) {
+        PRETTY_LOG(NOLOGMETA, "; encountered. Skipping...");
+        // skipping commentaries
+        while ( spu->text[spu->cc++] != '\n' );
+    } else {
+        spu->cc++;
+    }
+    continue;
 })
 
 GENERATE_COMMAND(HLT,  0x1, {
