@@ -165,6 +165,11 @@ command_t _parse_cmd(char *strline) {
 }
 
 
+#define GENERATE_COMMAND(TXT, OPCODE, ...)\
+case COMMANDS_##TXT:\
+    __VA_ARGS__\
+    break;\
+
 int SPU_run(SPU *spu) {
     assert(!stack_int_validate(&spu->stack));
     assert(spu->text);
@@ -177,7 +182,13 @@ int SPU_run(SPU *spu) {
         char *commandstr = (spu->text + spu->cc);
         command_t toexecute = _parse_cmd(commandstr);
 
+        switch (toexecute.code) {
+            #include "is.dsl"
+            default:
+                break;
+        }
 
+        /*
         if ( toexecute.code == COMMANDS_HLT ) {
             PRETTY_LOG(NOLOGMETA, "Halting...");
             break;
@@ -238,12 +249,15 @@ int SPU_run(SPU *spu) {
             continue;
 
         }
+        */
 
         spu->cc += toexecute.len;
     }
 
     return 0;
 }
+
+#undef GENERATE_COMMAND
 
 
 int main(int argc, char *argv[]) {
