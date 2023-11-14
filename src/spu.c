@@ -5,50 +5,14 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <stdarg.h>
-#include <string.h>
 
 #include "../third-party/stack/stack.h"
 
+#include "log.h"
 #include "is.h"
 
 DEFINE_STACK(int, "%d");
 DEFINE_STACK(double, "%lf");
-
-#define ANSI_COLOR_RED "\x1b[31m"
-#define ANSI_COLOR_YLW "\x1b[33m"
-#define ANSI_COLOR_RST "\x1b[0m"
-#define RED(str) ANSI_COLOR_RED str ANSI_COLOR_RST
-
-#define LOGMETA    __FILE__, __LINE__, __PRETTY_FUNCTION__
-#define NOLOGMETA    NULL,     -1,       NULL 
-
-#define PRETTY_ERROR(issue) fprintf(stderr, RED("[SPU error]")" %s:%d in (%s): %s: %s\n", LOGMETA, issue, strerror(errno)); exit(EXIT_FAILURE);
-#define PRETTY_FAIL(issue)  fprintf(stderr, RED("[SPU error]")" %s:%d in (%s): %s\n", LOGMETA, issue); exit(EXIT_FAILURE);
-
-#define PRETTY_LOG_BUFFER_SIZE 2048
-
-void PRETTY_LOG(const char *filename, const ssize_t fileline, const char* function, const char *fmt, ...) {
-    (void)filename;
-    (void)fileline;
-    (void)function;
-    (void)fmt;
-#ifdef VERBOSE
-    va_list args;
-    va_start(args, fmt);
-
-    char buffer[PRETTY_LOG_BUFFER_SIZE] = {};
-
-    vsprintf(buffer, fmt, args);
-
-    if (filename && fileline != -1 && function) {
-        fprintf(stderr, "[SPU log] %s:%d in (%s): %s\n", filename, (int)fileline, function, buffer);
-    } else {
-        fprintf(stderr, "[SPU log] %s\n", buffer);
-    }
-
-    va_end(args);
-#endif
-}
 
 long int fsize(int fildes) {
     struct stat meta;
@@ -126,12 +90,12 @@ int SPU_loadtext(SPU *spu, char *filename) {
     // reads programm text from filename
     int fd = open(filename, O_RDONLY);
     if (fd < 0) {
-        PRETTY_ERROR("open()");
+        PRETTY_ERROR("spu", "open()");
     }
 
     ssize_t size = fsize(fd);
     if (size < 0) {
-        PRETTY_ERROR("Faulty reading file stat");
+        PRETTY_ERROR("spu", "Faulty reading file stat");
     }
 
     spu->textsize = (size_t)size;
@@ -156,12 +120,12 @@ int SPU_loadtext(SPU *spu, char *filename) {
 command_t _parse_cmd(char *strline) {
     for(size_t i = 0; i < SIZEOFARR(INSTRCTN_SET); i++) {
         if(strncasecmp(INSTRCTN_SET[i].name, strline, strlen(INSTRCTN_SET[i].name)) == 0) {
-            PRETTY_LOG(NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
+            PRETTY_LOG("spu", NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
             return INSTRCTN_SET[i];
         }
     }
 
-    return /*command: none*/INSTRCTN_SET[0];
+    return /*command: none*/COMMAND_NONE;
 }
 
 
@@ -176,7 +140,7 @@ int SPU_run(SPU *spu) {
     assert(spu->textsize != 0);
     assert(spu->cc == 0);
     
-    PRETTY_LOG(NOLOGMETA, "Running text...");
+    PRETTY_LOG("spu", NOLOGMETA, "Running text...");
 
     while (spu->cc < spu->textsize) {
         char *commandstr = (spu->text + spu->cc);
@@ -199,8 +163,8 @@ int SPU_run(SPU *spu) {
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        PRETTY_LOG(NOLOGMETA, "Usage: %s [FILE]", *argv);
-        PRETTY_FAIL("Invalid agruments");
+        PRETTY_LOG("spu", NOLOGMETA, "Usage: %s [FILE]", *argv);
+        PRETTY_FAIL("spu", "Invalid agruments");
     }
     argv++;
 
@@ -210,7 +174,7 @@ int main(int argc, char *argv[]) {
 
     int ret = SPU_run(&main_spu);
     if (ret) {
-        PRETTY_LOG(NOLOGMETA, RED("interpeter error"));
+        PRETTY_LOG("spu", NOLOGMETA, RED("interpeter error"));
         SPU_dump(&main_spu);
     }
 
