@@ -19,16 +19,6 @@ static long int fsize(int fildes) {
     return meta.st_size;
 }
 
-
-/*
- *
- * lines  text
- * V       V
- * l[0] ->|push 5
- * l[1] ->|pop
- * l[2] ->|hlt
- *
- */
 typedef struct {
     char *text;          // pointer to executable text
     size_t textsize;     // size of text (= size of input file)

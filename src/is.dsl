@@ -1,26 +1,9 @@
 GENERATE_COMMAND(HLT,  0b11111111, 0, {
     PRETTY_LOG("spu", NOLOGMETA, "Halting...");
     break;
-    break;
 })
 
-GENERATE_COMMAND(PUSH, 0b00100001, 1, {
-    char *argstr = commandstr + toexecute.len;
-
-    // push argument validation
-    if ( *argstr != ' ') {
-        PRETTY_LOG("spu", NOLOGMETA, "\"%s\" argument parse error: \"%.*s\"",
-            toexecute.name,
-             strchr(commandstr, '\n') - commandstr, commandstr);
-        return -1;
-    }
-    int argparsed = atoi( argstr );
-    stack_int_push(&spu->stack, argparsed IF_VERBOSE(, LOGMETA));
-})
-
-GENERATE_COMMAND(PUSHR, 0b01000001, 0, {
-    char *argstr = commandstr + toexecute.len;
-
+GENERATE_COMMAND(PUSH, 0b00000001, 1, {
     // push argument validation
     if ( *argstr != ' ') {
         PRETTY_LOG("spu", NOLOGMETA, "\"%s\" argument parse error: \"%.*s\"",
