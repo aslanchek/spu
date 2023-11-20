@@ -1,20 +1,22 @@
-#include "asm.h"
-#include "is.h"
-#include "log.h"
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include "asm.h"
 
 assembler assembler_init() {
     assembler new = {
-        .text     = NULL,
-        .textsize = 0,
-        .tokens   = NULL,
-        .numtok   = 0,
-        .tc       = 0,
-        .bytecode = NULL,
+        .text        = NULL,
+        .textsize    = 0,
+        .tokens      = NULL,
+        .numtok      = 0,
+        .tc          = 0,
+        .bytecode    = dynarr_init(0),
     };
 
     return new;
@@ -23,12 +25,12 @@ assembler assembler_init() {
 void assembler_destroy(assembler *ass) {
     assert(ass->text);
     assert(ass->tokens);
-    assert(ass->bytecode);
+    assert(ass->bytecode.arr);
     assert(ass->tc == ass->numtok);
 
     free(ass->text);
     free(ass->tokens);
-    free(ass->bytecode);
+    dynarr_destroy(&ass->bytecode);
 
     bzero(ass, sizeof(assembler));
 }
@@ -50,14 +52,11 @@ void assembler_dump(assembler *ass) {
 
     fprintf(stderr, "--- BYTECODE --\n");
 
-    for (size_t i = 0; i < ass->numtok; i++) {
-        fprintf(stderr, "0x%08x ", ass->bytecode[i]);
-    }
-
-    fprintf(stderr, "\n");
-
-    for (size_t i = 0; i < ass->numtok; i++) {
-        fprintf(stderr, "0b%08b ", ass->bytecode[i]);
+    for (size_t i = 0; i < dynarr_size(&ass->bytecode); i++) {
+        fprintf(stderr, "[%03zu] 0x%02x          ""0b"
+                BYTE2BIN_PATTERN " \n", i,
+                dynarr_accss(&ass->bytecode, i),
+                BYTE2BIN(dynarr_accss(&ass->bytecode, i)));
     }
 
     fprintf(stderr, "\n");
@@ -67,14 +66,17 @@ void assembler_dump(assembler *ass) {
 }
 
 /*
+ * lexer
+ *
  * text = [ push 5\npush rax\nadd\nhlt ] -> [ "push", "5", "push", "rax", "add", "hlt" ]
+ *
  */
-
 int assembler_loadtext(assembler *ass, char *source) {
-    assert(ass->text     == NULL);
-    assert(ass->tokens   == NULL);
-    assert(ass->bytecode == NULL);
-    assert(ass->textsize != 0);
+    assert(ass->text         == NULL);
+    assert(ass->textsize     == 0);
+    assert(ass->tokens       == NULL);
+    assert(ass->numtok       == 0);
+    // TODO: validate dynarr
 
     //- reads programm text from filename -------------------
     int fd = open(source, O_RDONLY);
@@ -121,7 +123,7 @@ int assembler_loadtext(assembler *ass, char *source) {
         token = strtok(NULL, delims);
     }
 
-    ass->bytecode = calloc(ass->numtok, sizeof(uint8_t));
+    ass->bytecode = dynarr_init(ass->numtok);
 
     return 0;
 }
@@ -138,33 +140,67 @@ command_t _parse_cmd(char *token) {
     return /*failed to parse*/COMMAND_NONE;
 }
 
-int arg_cmp(const arg_t a1, const arg_t a2) {
-    return (a1.type == a2.type);
-}
 
 
 const arg_t _parse_arg(char *token) {
+    // check if arg is register
     for(size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
         if (strncasecmp(REGS_SET[i].name, token, strlen(REGS_SET[i].name)) == 0) {
+            PRETTY_LOG("assembler", NOLOGMETA, "\"%s\" encountered", REGS_SET[i].name);
             return (arg_t) { .type = ARG_TYPE_REG, .regarg = REGS_SET[i] };
         }
     }
 
-    // тут используем strtod
+    // check if arg is integer imm
+    char *endptr = NULL;
+    long arg = strtol(token, &endptr, 10);
+
+    if (endptr == strchr(token, '\0') && arg < INT_MAX && arg > INT_MIN ) {
+        return (arg_t) { .type = ARG_TYPE_INT, .intarg = arg };
+    }
 
     return /*failed to parse*/ARG_NONE;
 }
 
-int assembler_translate(assembler *ass) {
+#define WRITE_CMD(ARGN)\
+if (ARGN) {\
+    for (size_t n = 0; n < ARGN; n++) {\
+        const arg_t arg = _parse_arg(ass->tokens[ass->tc]);\
+        switch ( arg.type ) {\
+            case ARG_TYPE_INT: {\
+                dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b00100000 }, 1);\
+                dynarr_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
+                } break;\
+            case ARG_TYPE_REG: {\
+                dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b01000000 }, 1);\
+                dynarr_append(&ass->bytecode, &arg.regarg.opcode, 1);\
+                } break;\
+            default:\
+                PRETTY_LOG("assembler", NOLOGMETA,\
+                           RED("argument parse error: ") "%s", ass->tokens[ass->tc]);\
+                return 1;\
+                break;\
+        }\
+    }\
+} else {\
+    dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode }, 1);\
+}\
+
+#define GENERATE_COMMAND(NAME, OPCODE, ARGN, ...)\
+    case COMMANDS_##NAME:\
+        WRITE_CMD(ARGN)\
+        break;\
+
+int assembler_translate(assembler *ass, const char *output) {
     assert(ass->text);
     assert(ass->textsize != 0);
+    assert(ass->tokens);
+    assert(ass->numtok != 0);
     assert(ass->tc == 0);
+    // TODO: validate dynarr
+    assert(ass->bytecode.arr);
 
-    assembler_dump(ass);
-    
     PRETTY_LOG("assembler", NOLOGMETA, "Running text translator...");
-
-    size_t bcc = 0; //<- bytecode counter
 
     while (ass->tc < ass->numtok) {
         char *currtok = ass->tokens[ass->tc++];
@@ -172,40 +208,8 @@ int assembler_translate(assembler *ass) {
         command_t toexecute = _parse_cmd(currtok);
 
         switch (toexecute.cmd_code) {
-            case COMMANDS_HLT: {
-                ass->bytecode[bcc++] = toexecute.opcode;
-                break;
 
-            } break;
-
-            case COMMANDS_PUSH: {
-                const arg_t arg = _parse_arg(ass->tokens[ass->tc]);
-
-                switch ( arg.type ) {
-                    case ARG_TYPE_INT: {
-                        ass->bytecode[bcc++] = toexecute.opcode | 0b00100000;
-                        ass->bytecode[bcc++] = arg.intarg;
-                        } break;
-
-                    case ARG_TYPE_REG: {
-                        ass->bytecode[bcc++] = toexecute.opcode | 0b01000000;
-                        ass->bytecode[bcc++] = arg.regarg.opcode;
-                        } break;
-
-
-                    default:
-                        PRETTY_LOG("assembler;", NOLOGMETA,
-                                   RED("argument parse error"));
-                        return 1;
-                        break;
-                }
-
-            } break;
-
-            case COMMANDS_POP: {
-                ass->bytecode[bcc++] = toexecute.opcode;
-                break;
-            }
+            #include "is.dsl"
 
             default:
               break;
@@ -214,25 +218,47 @@ int assembler_translate(assembler *ass) {
 
     assembler_dump(ass);
 
+    int fd = open(output, O_WRONLY|O_CREAT, 0644);
+    if (fd < 0) {
+        PRETTY_ERROR("assembler", "open()");
+    }
+    
+    ssize_t ret = write(fd, SIG, sizeof(SIG));
+    if (ret < 0) {
+        PRETTY_ERROR("assembler", "write()");
+    }
+
+    ret = write(fd, ass->bytecode.arr, dynarr_size(&ass->bytecode));
+    if (ret < 0) {
+        PRETTY_ERROR("assembler", "write()");
+    }
+
+    close(fd);
+
     return 0;
 }
+#undef GENERATE_COMMAND
+
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
+    if (argc != 3) {
         PRETTY_LOG("assembler", NOLOGMETA, "Usage: %s [SOURCE] [OUTPUT]", *argv);
         PRETTY_FAIL("assembler", "Invalid agruments");
     }
+
     assembler ass = assembler_init();
 
     assembler_loadtext(&ass, /*source file*/argv[1]);
 
-    int ret = assembler_translate(&ass);
+    int ret = assembler_translate(&ass, /*output file*/argv[2]);
+
     if (ret) {
-        PRETTY_LOG("assembler;", NOLOGMETA, RED("translator error"));
+        PRETTY_LOG("assembler", NOLOGMETA, RED("translator error"));
         assembler_dump(&ass);
     }
 
     assembler_destroy(&ass);
+
     return 0;
 }
 

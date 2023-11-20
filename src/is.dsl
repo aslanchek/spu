@@ -56,3 +56,6 @@ GENERATE_COMMAND(MUL,  0b00000111, 0, {
 
     stack_int_push(&spu->stack, op2 * op1 IF_VERBOSE(, LOGMETA));
 })
+
+GENERATE_COMMAND(MOV,  0b00001000, 2, {
+})

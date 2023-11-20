@@ -1,14 +1,15 @@
 #ifndef ASSEMBLER_HEADER_H
 #define ASSEMBLER_HEADER_H
 
+#define SIG (uint64_t []) { 0x0101010101010101 }
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "../third-party/stack/stack.h"
-
 #include "log.h"
 #include "is.h"
+#include "dynarr.h"
 
 static long int fsize(int fildes) {
     struct stat meta;
@@ -20,12 +21,12 @@ static long int fsize(int fildes) {
 }
 
 typedef struct {
-    char *text;          // pointer to executable text
-    size_t textsize;     // size of text (= size of input file)
-    char **tokens;       // lines
-    size_t numtok;       // size of text (= size of input file)
-    size_t tc;           // token counter
-    uint8_t *bytecode;   // translated byte code
+    char *text;           // pointer to executable text
+    size_t textsize;      // size of text (= size of input file)
+    char **tokens;        // tokens
+    size_t numtok;        // number of tokens
+    size_t tc;            // token counter
+    dynarr bytecode;    // translated byte code
 } assembler;
 
 assembler assembler_init();
@@ -38,7 +39,7 @@ int assembler_loadtext(assembler *spu, char *source);
 
 command_t _parse_cmd(char *strline);
 
-int assembler_translate(assembler *spu);
+int assembler_translate(assembler *spu, const char *output);
 
 #endif
 
