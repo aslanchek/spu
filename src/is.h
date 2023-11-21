@@ -13,6 +13,8 @@
 #define GENERATE_COMMAND(NAME, OPCODE, ARGN, CODE) COMMANDS_##NAME,
 typedef enum {
 
+    COMMANDS_NONE,
+
     #include "is.dsl"
 
 } COMMANDS;

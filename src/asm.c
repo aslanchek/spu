@@ -8,6 +8,8 @@
 #include <unistd.h>
 
 #include "asm.h"
+#include "is.h"
+#include "log.h"
 
 assembler assembler_init() {
     assembler new = {
@@ -38,8 +40,6 @@ void assembler_destroy(assembler *ass) {
 
 
 void assembler_dump(assembler *ass) {
-    assert(ass->tokens);
-
     fprintf(stderr, "+---- ASM DUMP -----\n");
     fprintf(stderr, "+--- TOKENS ---\n");
 
@@ -58,7 +58,7 @@ void assembler_dump(assembler *ass) {
     fprintf(stderr, "+--------------\n"
                     "total tokens number = %zu\n", ass->numtok);
 
-    fprintf(stderr, "--- BYTECODE --\n");
+    fprintf(stderr, "+--- BYTECODE ---\n");
 
     for (size_t i = 0; i < dynarr_size(&ass->bytecode); i++) {
         fprintf(stderr, "[%03zu] 0x%02x          ""0b"
@@ -69,7 +69,7 @@ void assembler_dump(assembler *ass) {
 
     fprintf(stderr, "\n");
 
-    fprintf(stderr, "+--------------\n");
+    fprintf(stderr, "+----------------\n");
 
 }
 
@@ -89,12 +89,14 @@ int assembler_loadtext(assembler *ass, char *source) {
     // - reads programm text from filename -------------------
     int fd = open(source, O_RDONLY);
     if (fd < 0) {
-        PRETTY_ERROR("assembler", "open()");
+        PRETTY_ERROR("assembler", LOGMETA, "open()");
+        return 1;
     }
 
     ssize_t size = fsize(fd);
     if (size < 0) {
-        PRETTY_ERROR("assembler", "Faulty reading file stat");
+        PRETTY_ERROR("assembler", LOGMETA, "Faulty reading file stat");
+        return 1;
     }
 
     ass->textsize = (size_t)size;
@@ -146,12 +148,12 @@ command_t _parse_cmd(char *token) {
     return /*failed to parse*/COMMAND_NONE;
 }
 
-const arg_t _parse_arg(char *token) {
+arg_t _parse_arg(char *token) {
     // check if arg is register
     for(size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
         if (strncasecmp(REGS_SET[i].name, token, strlen(REGS_SET[i].name)) == 0) {
             PRETTY_LOG("assembler", NOLOGMETA, "\"%s\" encountered", REGS_SET[i].name);
-            return (arg_t) { .type = ARG_TYPE_REG, .regarg = REGS_SET[i] };
+            return (const arg_t) { .type = ARG_TYPE_REG, .regarg = REGS_SET[i] };
         }
     }
 
@@ -160,7 +162,7 @@ const arg_t _parse_arg(char *token) {
     long arg = strtol(token, &endptr, 10);
 
     if (endptr == strchr(token, '\0') && arg < INT_MAX && arg > INT_MIN ) {
-        return (arg_t) { .type = ARG_TYPE_INT, .intarg = arg };
+        return (arg_t) { .type = ARG_TYPE_INT, .intarg = (int)arg };
     }
 
     return /*failed to parse*/ARG_NONE;
@@ -168,7 +170,7 @@ const arg_t _parse_arg(char *token) {
 
 #define WRITE_CMD(ARGN)\
 if (ARGN) {\
-    const arg_t arg = _parse_arg(ass->tokens[ass->tc]);\
+    const arg_t arg = _parse_arg(ass->tokens[ass->tc++]);\
     switch ( arg.type ) {\
         case ARG_TYPE_INT: {\
             dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b00100000 }, 1);\
@@ -179,8 +181,7 @@ if (ARGN) {\
             dynarr_append(&ass->bytecode, &arg.regarg.opcode, 1);\
             } break;\
         case ARG_TYPE_NONE: {\
-            PRETTY_LOG("assembler", NOLOGMETA,\
-                       RED("argument parse error: ") "%s", ass->tokens[ass->tc]);\
+            PRETTY_ERROR("assembler", NOLOGMETA, "argument parse error: %s", ass->tokens[--(ass->tc)]);\
             return 1;\
             } break;\
         default:\
@@ -212,6 +213,10 @@ int assembler_translate(assembler *ass, const char *output) {
         command_t toexecute = _parse_cmd(currtok);
 
         switch (toexecute.cmd_code) {
+            case COMMANDS_NONE: {
+                PRETTY_ERROR("assembler", NOLOGMETA, "command parse error: %s", ass->tokens[--(ass->tc)]);\
+                return 1;
+            } break;
 
             #include "is.dsl"
 
@@ -220,27 +225,32 @@ int assembler_translate(assembler *ass, const char *output) {
         }
     }
 
-    assembler_dump(ass);
-
     int fd = open(output, O_WRONLY|O_CREAT, 0644);
     if (fd < 0) {
-        PRETTY_ERROR("assembler", "open()");
+        PRETTY_ERROR("assembler", LOGMETA, "open()");
+        close(fd);
+        return 1;
     }
     
     ssize_t ret = write(fd, SIG, sizeof(SIG));
     if (ret < 0) {
-        PRETTY_ERROR("assembler", "write()");
+        PRETTY_ERROR("assembler", LOGMETA, "write()");
+        close(fd);
+        return 1;
     }
 
     ret = write(fd, ass->bytecode.arr, dynarr_size(&ass->bytecode));
     if (ret < 0) {
-        PRETTY_ERROR("assembler", "write()");
+        PRETTY_ERROR("assembler", LOGMETA, "write()");
+        close(fd);
+        return 1;
     }
 
     close(fd);
 
     return 0;
 }
+
 #undef GENERATE_COMMAND
 
 
@@ -250,11 +260,19 @@ int main(int argc, char *argv[]) {
         PRETTY_FAIL("assembler", "Invalid agruments");
     }
 
+    if ( finode(argv[1]) == finode(argv[2]) ) {
+        PRETTY_FAIL("assembler", "input file is the same as output file");
+    }
+
     assembler ass = assembler_init();
 
-    assembler_loadtext(&ass, /*source file*/argv[1]);
+    int ret = assembler_loadtext(&ass, /*source file*/argv[1]);
 
-    int ret = assembler_translate(&ass, /*output file*/argv[2]);
+    if (ret) {
+        PRETTY_LOG("assembler", NOLOGMETA, RED("text loading error"));
+    }
+
+    ret = assembler_translate(&ass, /*output file*/argv[2]);
 
     if (ret) {
         PRETTY_LOG("assembler", NOLOGMETA, RED("translator error"));

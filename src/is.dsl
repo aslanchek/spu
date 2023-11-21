@@ -1,5 +1,3 @@
-GENERATE_COMMAND(NONE,  0b00000000, 0, {})
-
 GENERATE_COMMAND(HLT,  0b11111111, 0, {
     PRETTY_LOG("spu", NOLOGMETA, "Halting...");
     break;
