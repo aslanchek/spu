@@ -16,7 +16,7 @@ assembler assembler_init() {
         .tokens      = NULL,
         .numtok      = 0,
         .tc          = 0,
-        .bytecode    = dynarr_init(0),
+        .bytecode    = dynarr_init(1),
     };
 
     return new;
@@ -30,6 +30,7 @@ void assembler_destroy(assembler *ass) {
 
     free(ass->text);
     free(ass->tokens);
+
     dynarr_destroy(&ass->bytecode);
 
     bzero(ass, sizeof(assembler));
@@ -42,9 +43,16 @@ void assembler_dump(assembler *ass) {
     fprintf(stderr, "+---- ASM DUMP -----\n");
     fprintf(stderr, "+--- TOKENS ---\n");
 
+    for (size_t i = 0; i < ass->tc; i++) {
+        fprintf(stderr, "  [%05zu] %s\n", i, ass->tokens[i]);
+    }
 
-    for (size_t i = 0; i < ass->numtok; i++) {
-        fprintf(stderr, "[%05zu] %s\n", i, ass->tokens[i]);
+    if (ass->tc < ass->numtok) {
+        fprintf(stderr, "->[%05zu] %s\n", ass->tc, ass->tokens[ass->tc]);
+    }
+
+    for (size_t i = ass->tc + 1; i < ass->numtok; i++) {
+        fprintf(stderr, "  [%05zu] %s\n", i, ass->tokens[i]);
     }
 
     fprintf(stderr, "+--------------\n"
@@ -78,7 +86,7 @@ int assembler_loadtext(assembler *ass, char *source) {
     assert(ass->numtok       == 0);
     // TODO: validate dynarr
 
-    //- reads programm text from filename -------------------
+    // - reads programm text from filename -------------------
     int fd = open(source, O_RDONLY);
     if (fd < 0) {
         PRETTY_ERROR("assembler", "open()");
@@ -97,7 +105,7 @@ int assembler_loadtext(assembler *ass, char *source) {
 
     close(fd);
 
-    //- tokenizing ------------------------------------------
+    // - tokenizing ------------------------------------------
     
     // eliminating commentaries
     for (char *ptr = ass->text; ptr < ass->text + ass->textsize; ptr++) {
@@ -123,8 +131,6 @@ int assembler_loadtext(assembler *ass, char *source) {
         token = strtok(NULL, delims);
     }
 
-    ass->bytecode = dynarr_init(ass->numtok);
-
     return 0;
 }
 
@@ -139,8 +145,6 @@ command_t _parse_cmd(char *token) {
 
     return /*failed to parse*/COMMAND_NONE;
 }
-
-
 
 const arg_t _parse_arg(char *token) {
     // check if arg is register
@@ -164,23 +168,23 @@ const arg_t _parse_arg(char *token) {
 
 #define WRITE_CMD(ARGN)\
 if (ARGN) {\
-    for (size_t n = 0; n < ARGN; n++) {\
-        const arg_t arg = _parse_arg(ass->tokens[ass->tc]);\
-        switch ( arg.type ) {\
-            case ARG_TYPE_INT: {\
-                dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b00100000 }, 1);\
-                dynarr_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
-                } break;\
-            case ARG_TYPE_REG: {\
-                dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b01000000 }, 1);\
-                dynarr_append(&ass->bytecode, &arg.regarg.opcode, 1);\
-                } break;\
-            default:\
-                PRETTY_LOG("assembler", NOLOGMETA,\
-                           RED("argument parse error: ") "%s", ass->tokens[ass->tc]);\
-                return 1;\
-                break;\
-        }\
+    const arg_t arg = _parse_arg(ass->tokens[ass->tc]);\
+    switch ( arg.type ) {\
+        case ARG_TYPE_INT: {\
+            dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b00100000 }, 1);\
+            dynarr_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
+            } break;\
+        case ARG_TYPE_REG: {\
+            dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b01000000 }, 1);\
+            dynarr_append(&ass->bytecode, &arg.regarg.opcode, 1);\
+            } break;\
+        case ARG_TYPE_NONE: {\
+            PRETTY_LOG("assembler", NOLOGMETA,\
+                       RED("argument parse error: ") "%s", ass->tokens[ass->tc]);\
+            return 1;\
+            } break;\
+        default:\
+            break;\
     }\
 } else {\
     dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode }, 1);\

@@ -35,8 +35,8 @@ static size_t dynarr_size(dynarr *dnrr) {
 }
 
 static void dynarr_append(dynarr *dnrr, const void *val, size_t sz) {
-    if (dnrr->size == dnrr->capacity) {
-        _dynarr_resize(dnrr, dnrr->capacity * 2);
+    if ( dnrr->size + sz > dnrr->capacity) {
+        _dynarr_resize(dnrr, 2 * (dnrr->size + sz));
     }
 
     for (size_t i = 0; i < sz; i++) {
