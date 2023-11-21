@@ -15,10 +15,39 @@
 #define LOGMETA    __FILE__, __LINE__, __PRETTY_FUNCTION__
 #define NOLOGMETA    NULL,     -1,       NULL 
 
-#define PRETTY_ERROR(subject, issue) fprintf(stderr, RED("[%s error]")" %s:%d in (%s): %s: %s\n", subject, LOGMETA, issue, strerror(errno)); exit(EXIT_FAILURE);
 #define PRETTY_FAIL(subject, issue)  fprintf(stderr, RED("[%s error]")" %s:%d in (%s): %s\n", subject , LOGMETA, issue); exit(EXIT_FAILURE);
 
-#define PRETTY_LOG_BUFFER_SIZE 2048
+#define PRETTY_BUFFER_SIZE 2048
+
+static void PRETTY_ERROR(const char *subject, const char *filename, const ssize_t fileline, const char *function, const char *fmt, ...) {
+    (void)subject;
+    (void)filename;
+    (void)fileline;
+    (void)function;
+    (void)fmt;
+    va_list args;
+    va_start(args, fmt);
+
+    char strbuff[PRETTY_BUFFER_SIZE] = {};
+
+    vsprintf(strbuff, fmt, args);
+
+    if (filename && fileline != -1 && function) {
+        if (errno) {
+            fprintf(stderr, RED("[%s error]")" %s:%d in (%s): %s: %s\n", subject, filename, (int)fileline, function, strbuff, strerror(errno));
+        } else {
+            fprintf(stderr, RED("[%s error]")" %s:%d in (%s): %s\n", subject, filename, (int)fileline, function, strbuff);
+        }
+    } else {
+        if (errno) {
+            fprintf(stderr, RED("[%s error]")" %s: %s\n", subject, strbuff, strerror(errno));
+        } else {
+            fprintf(stderr, RED("[%s error]")" %s\n", subject, strbuff);
+        }
+    }
+
+    va_end(args);
+}
 
 static void PRETTY_LOG(const char *subject, const char *filename, const ssize_t fileline, const char* function, const char *fmt, ...) {
     (void)subject;
@@ -30,7 +59,7 @@ static void PRETTY_LOG(const char *subject, const char *filename, const ssize_t 
     va_list args;
     va_start(args, fmt);
 
-    char strbuff[PRETTY_LOG_BUFFER_SIZE] = {};
+    char strbuff[PRETTY_BUFFER_SIZE] = {};
 
     vsprintf(strbuff, fmt, args);
 
