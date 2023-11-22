@@ -256,7 +256,7 @@ int assembler_translate(assembler *ass, const char *output) {
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
-        PRETTY_LOG("assembler", NOLOGMETA, "Usage: %s [SOURCE] [OUTPUT]", *argv);
+        PRETTY_ERROR("assembler", NOLOGMETA, "Usage: %s [SOURCE] [OUTPUT]", *argv);
         PRETTY_FAIL("assembler", "Invalid agruments");
     }
 
