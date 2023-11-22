@@ -1,7 +1,7 @@
 #ifndef ASSEMBLER_HEADER_H
 #define ASSEMBLER_HEADER_H
 
-#define SIG (uint64_t []) { 0x0101010101010101 }
+#define SIG (uint64_t []) { 0x0101010101010101U }
 
 #include <fcntl.h>
 #include <unistd.h>

@@ -269,14 +269,18 @@ int main(int argc, char *argv[]) {
     int ret = assembler_loadtext(&ass, /*source file*/argv[1]);
 
     if (ret) {
-        PRETTY_LOG("assembler", NOLOGMETA, RED("text loading error"));
+        PRETTY_ERROR("assembler", NOLOGMETA, "text loading error");
+        assembler_destroy(&ass);
+        return 1;
     }
 
     ret = assembler_translate(&ass, /*output file*/argv[2]);
 
     if (ret) {
-        PRETTY_LOG("assembler", NOLOGMETA, RED("translator error"));
+        PRETTY_ERROR("assembler", NOLOGMETA, "translator error");
         assembler_dump(&ass);
+        assembler_destroy(&ass);
+        return 1;
     }
 
     assembler_destroy(&ass);
