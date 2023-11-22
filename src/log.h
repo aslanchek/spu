@@ -7,10 +7,16 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ANSI_COLOR_RED "\x1b[31m"
-#define ANSI_COLOR_YLW "\x1b[33m"
-#define ANSI_COLOR_RST "\x1b[0m"
+#define ANSI_COLOR_RED   "\x1b[31m" // red
+#define ANSI_COLOR_GRE   "\x1b[32m" // green
+#define ANSI_COLOR_YEL   "\x1b[33m" // yellow
+#define ANSI_COLOR_BLU   "\x1b[34m" // blue
+#define ANSI_COLOR_MAG   "\x1b[35m" // magenta
+#define ANSI_COLOR_CYA   "\x1b[36m" // cyan
+#define ANSI_COLOR_RST   "\x1b[0m"  // reset color
+
 #define RED(str) ANSI_COLOR_RED str ANSI_COLOR_RST
+#define MAG(str) ANSI_COLOR_MAG str ANSI_COLOR_RST
 
 #define LOGMETA    __FILE__, __LINE__, __PRETTY_FUNCTION__
 #define NOLOGMETA    NULL,     -1,       NULL 
