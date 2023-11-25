@@ -148,6 +148,7 @@ command_t _parse_cmd(char *token) {
     return /*failed to parse*/COMMAND_NONE;
 }
 
+
 arg_t _parse_arg(char *token) {
     // check if arg is register
     for(size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
@@ -167,6 +168,18 @@ arg_t _parse_arg(char *token) {
 
     return /*failed to parse*/ARG_NONE;
 }
+
+/* TODO: релизовать следующую фичу:
+         в is.dsl добавить параметр, отвечающий за
+         типы аргументов, которые может принимать инструкция,
+         например push может принимать imm и reg (0b11) , а вот
+         pop только reg (0b01), а вот add ничего не принимает (0b00).
+         Научиться корректно это обрабатывать, если b00, то
+         вообще не генерирует код читающий аргументы, если 
+         b01 - генерировать только тот код, который читаем imm, и тп.
+
+         Это позволит обрабатывать случай, когда аргументом pop является imm.
+*/
 
 #define WRITE_CMD(ARGN)\
 if (ARGN) {\

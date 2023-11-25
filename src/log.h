@@ -40,13 +40,20 @@ static void PRETTY_ERROR(const char *subject, const char *filename, const ssize_
 
     if (filename && fileline != -1 && function) {
         if (errno) {
-            fprintf(stderr, RED("[%s error]")" %s:%d in (%s): %s: %s\n", subject, filename, (int)fileline, function, strbuff, strerror(errno));
+            fprintf(stderr, RED("[%s error]")" %s:%d in (%s) %s [errno: %d %s]\n",
+                subject,
+                filename,
+                (int)fileline,
+                function,
+                strbuff,
+                errno,
+                strerror(errno));
         } else {
             fprintf(stderr, RED("[%s error]")" %s:%d in (%s): %s\n", subject, filename, (int)fileline, function, strbuff);
         }
     } else {
         if (errno) {
-            fprintf(stderr, RED("[%s error]")" %s: %s\n", subject, strbuff, strerror(errno));
+            fprintf(stderr, RED("[%s error]")" %s [errno: %d %s]\n", subject, strbuff, errno, strerror(errno));
         } else {
             fprintf(stderr, RED("[%s error]")" %s\n", subject, strbuff);
         }

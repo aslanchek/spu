@@ -8,6 +8,10 @@ SPU SPU_init() {
        .pc       = 0,
     };
 
+    for (size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
+        new.regs[i] = 0;
+    }
+
     return new;
 }
 
@@ -46,7 +50,13 @@ void SPU_destroy(SPU *spu) {
 void SPU_dump(SPU *spu) {
     STACK_DUMP(&spu->stack, int);
 
-    fprintf(stderr, "\n\n");
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, " registers:\n");
+
+    for (size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
+        fprintf(stderr, "  %s: %d\n", REGS_SET[i].name, spu->regs[i]);
+    }
 
     fprintf(stderr, " program counter = %zu\n", spu->pc);
 
@@ -85,6 +95,23 @@ void SPU_dump(SPU *spu) {
     fprintf(stderr, "\n total text size = %zu\n", spu->textsize);
 }
 
+
+void SPU_interactive_dump(SPU *spu) {
+    assert(!stack_int_validate(&spu->stack));
+    assert(spu->text);
+    assert(spu->textsize != 0);
+    assert(spu->pc == 0);
+    
+    while ( spu->pc < spu->textsize ) {
+        system("clear");
+        SPU_dump(spu);
+        spu->pc++;
+        sleep(1);
+    }
+
+}
+
+
 int SPU_loadtext(SPU *spu, char *filename) {
     // reads programm text from filename
     int fd = open(filename, O_RDONLY);
@@ -105,8 +132,8 @@ int SPU_loadtext(SPU *spu, char *filename) {
     if (size >= 8) {
         uint8_t sig[8];
         read(fd, sig, 8);
-        if (*(uint64_t *)sig == 0x0000000000000000U) {
-            PRETTY_ERROR("spu", LOGMETA, "Wrong executable signature");
+        if (*(uint64_t *)sig != *SIG) {
+            PRETTY_ERROR("spu", LOGMETA, "Wrong executable version.");
             close(fd);
             return 1;
         }
@@ -136,9 +163,9 @@ int SPU_loadtext(SPU *spu, char *filename) {
  *  [3.14push\n]      -> unparsed
  *
  */
-command_t _parse_cmd(char *strline) {
+command_t _parse_cmd(uint8_t *c) {
     for(size_t i = 0; i < SIZEOFARR(INSTRCTN_SET); i++) {
-        if(strncasecmp(INSTRCTN_SET[i].name, strline, strlen(INSTRCTN_SET[i].name)) == 0) {
+        if(*c == INSTRCTN_SET[i].opcode) {
             PRETTY_LOG("spu", NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
             return INSTRCTN_SET[i];
         }
@@ -148,6 +175,64 @@ command_t _parse_cmd(char *strline) {
 }
 
 
+/*
+ * 8 бит
+ *  000 00000
+ *   ^^    ^
+ *reg||imm  \ номер команды
+ *
+ */
+#define COMMANDMASK  0b00011111
+#define ARGUMENTMASK 0b11100000
+
+#define ISIMM        0b00100000 // imm - immediate constant
+#define ISREG        0b01000000
+#define ISMEM        0b10000000
+
+
+#define GETREG\
+    int *reg = NULL;\
+    for (size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {\
+        if (*(cp+1) == REGS_SET[i].opcode) {\
+            reg = spu->regs + i;\
+            spu->pc += 1;\
+            break;\
+        }\
+    }\
+    if (!reg) {\
+        PRETTY_ERROR("spu", NOLOGMETA, "Unexpected register");\
+        return 1;\
+    }\
+
+#define GETARG\
+    int arg = 0;\
+    switch ((*cp) & ARGUMENTMASK) {\
+        case ISIMM: {\
+            uint8_t toint[sizeof(int)];\
+            memcpy(toint, cp + 1, sizeof(int));\
+            arg = *(int *)(toint);\
+            spu->pc += 4;\
+        } break;\
+        case ISREG: {\
+            for (size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {\
+                if (*(cp + 1) == REGS_SET[i].opcode) {\
+                    arg = spu->regs[i];\
+                }\
+            }\
+            spu->pc += 1;\
+        } break;\
+        default:\
+            PRETTY_ERROR("spu", NOLOGMETA, "Unexpected argument");\
+            return 1;\
+            break;\
+    }\
+
+
+#define GENERATE_COMMAND(NAME, OPCODE, ARGN, ...)\
+    case OPCODE:\
+        __VA_ARGS__\
+        break;\
+
 int SPU_run(SPU *spu) {
     assert(!stack_int_validate(&spu->stack));
     assert(spu->text);
@@ -155,13 +240,27 @@ int SPU_run(SPU *spu) {
     assert(spu->pc == 0);
     
     PRETTY_LOG("spu", NOLOGMETA, "Running text...");
+    
+    while ( spu->pc < spu->textsize ) {
+        // cp - command pointer
+        //uint8_t *cp = spu->text + spu->pc++;
+        //command_t toexecute = _parse_cmd(cp);
 
-    while (spu->pc < spu->textsize) {
-        SPU_dump(spu);
-        sleep(1);
-        system("clear");
-        spu->pc++;
+
+        uint8_t *cp = spu->text + spu->pc++;
+
+
+        switch (*cp & COMMANDMASK ) {
+            #include "is.dsl"
+            default:
+                PRETTY_ERROR("spu", NOLOGMETA, "Unexpected instruction");\
+                return 1;
+                break;
+        }
+
     }
+
+    //halt:
 
     return 0;
 }
@@ -181,8 +280,9 @@ int main(int argc, char *argv[]) {
 
     if (ret) {
         PRETTY_ERROR("spu", NOLOGMETA, "Loading text error");
-        SPU_dump(&Richard);
     }
+
+    //SPU_interactive_dump(&Richard);
 
     ret = SPU_run(&Richard);
 
@@ -190,6 +290,7 @@ int main(int argc, char *argv[]) {
         PRETTY_ERROR("spu", NOLOGMETA, "Runtime error");
         SPU_dump(&Richard);
     }
+
 
     SPU_destroy(&Richard);
     return 0;

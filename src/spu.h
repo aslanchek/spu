@@ -1,3 +1,10 @@
+/*********************************
+ * Software processing unit
+ *
+ *********************************/
+#ifndef SOFTWARE_PROCESSING_UNIT_HEADER_H
+#define SOFTWARE_PROCESSING_UNIT_HEADER_H
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -6,8 +13,9 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 
-#include "../third-party/stack/stack.h"
+#define SIG (uint64_t []) { 0xBADC0FFE00000001U }
 
+#include "../third-party/stack/stack.h"
 #include "log.h"
 #include "is.h"
 
@@ -27,6 +35,7 @@ typedef struct {
     uint8_t *text;      // pointer to executable text
     size_t textsize;    // size of text (= size of input file)
     size_t pc;          // program counter
+    int regs[SIZEOFARR(REGS_SET)];
 } SPU;
 
 SPU SPU_init();
@@ -37,7 +46,9 @@ void SPU_dump(SPU *spu);
 
 int SPU_loadtext(SPU *spu, char *filename);
 
-command_t _parse_cmd(char *strline);
+command_t _parse_cmd(uint8_t *c);
 
 int SPU_run(SPU *spu);
+
+#endif
 
