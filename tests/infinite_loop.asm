@@ -4,9 +4,10 @@ next:     ;
 push rax  ;<---+
 push rax  ;    |
 mul       ;    |
+out       ;    |
 push rax  ;    |
 push 1    ;    |
 add       ;    |
 pop rax   ;    |
-add       ;    |
 jmp next  ;----+
+hlt
