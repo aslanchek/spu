@@ -39,6 +39,17 @@ static size_t dynarr_byte_size(dynarr_byte *dnrr) {
     return dnrr->size;
 }
 
+static void dynarr_byte_insert(dynarr_byte *dnrr, const void *val, size_t sz, size_t pos) {
+    if ( dnrr->size + sz > dnrr->capacity) {
+        _dynarr_byte_resize(dnrr, 2 * (dnrr->size + sz));
+    }
+
+    for (size_t i = 0; i < sz; i++) {
+      dnrr->arr[pos + i] = ((const uint8_t *)val) [i];
+    }
+};
+
+
 static void dynarr_byte_append(dynarr_byte *dnrr, const void *val, size_t sz) {
     if ( dnrr->size + sz > dnrr->capacity) {
         _dynarr_byte_resize(dnrr, 2 * (dnrr->size + sz));

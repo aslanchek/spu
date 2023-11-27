@@ -1,4 +1,5 @@
 #include "asm.h"
+#include "dynarr_byte.h"
 #include "dynarr_int.h"
 #include "is.h"
 #include "log.h"
@@ -102,6 +103,8 @@ int assembler_loadtext(assembler *ass, char *source) {
     assert(ass->tokens       == NULL);
     assert(ass->numtok       == 0);
     // TODO: validate dynarr
+
+    PRETTY_LOG("assembler", NOLOGMETA, "Running loader...");
 
     // - reads programm text from filename -------------------
     int fd = open(source, O_RDONLY);
@@ -313,10 +316,11 @@ int assembler_translate(assembler *ass) {
     assert(ass->tokens);
     assert(ass->numtok != 0);
     assert(ass->tc == 0);
+    assert(ass->labels);
     // TODO: validate dynarr
     assert(ass->bytecode.arr);
 
-    PRETTY_LOG("assembler translate", NOLOGMETA, "Running text translator...");
+    PRETTY_LOG("assembler", NOLOGMETA, "Running text translator...");
 
     while (ass->tc < ass->numtok) {
         char *currtok = ass->tokens[ass->tc++];
@@ -356,7 +360,45 @@ int assembler_translate(assembler *ass) {
 
 #undef GENERATE_COMMAND
 
+int assembler_link(assembler *ass) {
+    assert(ass->text);
+    assert(ass->tokens);
+    assert(ass->labels);
+    // TODO: validate dynarr
+    assert(ass->bytecode.arr);
+
+    PRETTY_LOG("assembler", NOLOGMETA, "Running linker...");
+
+    for (size_t i = 0; i < ass->numlabels; i++) {
+        for (size_t j = 0; j < ass->labels[i].fxplocs.size; j++) {
+            dynarr_byte_insert(&ass->bytecode, &ass->labels[i].addr, sizeof(int), dynarr_int_accss(&ass->labels[i].fxplocs, j) );
+        }
+    }
+
+    for (size_t i = 0; i < ass->bytecode.size; i++) {
+        uint8_t toint[sizeof(int)];
+        memcpy(toint,  ass->bytecode.arr + i, sizeof(int));
+
+        int faultlabel = *(int *)(toint);
+
+        if (faultlabel == FXPVAL) {
+            PRETTY_ERROR("assembler link", NOLOGMETA, "unresolved label: on cs:+%zu", i);\
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 int assembler_write(assembler *ass, const char *output) {
+    assert(ass->text);
+    assert(ass->tokens);
+    assert(ass->labels);
+    // TODO: validate dynarr
+    assert(ass->bytecode.arr);
+
+    PRETTY_LOG("assembler", NOLOGMETA, "Running writer...");
+
     int fd = open(output, O_WRONLY|O_CREAT, 0644);
     if (fd < 0) {
         PRETTY_ERROR("assembler write", LOGMETA, "open()");
@@ -382,6 +424,7 @@ int assembler_write(assembler *ass, const char *output) {
 
     return 0;
 }
+
 
 
 int main(int argc, char *argv[]) {
@@ -413,7 +456,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /*
     ret = assembler_link(&ass);
 
     if (ret) {
@@ -422,17 +464,21 @@ int main(int argc, char *argv[]) {
         assembler_destroy(&ass);
         return 1;
     }
-    */
 
     ret = assembler_write(&ass, /*output file*/argv[2]);
 
     if (ret) {
         PRETTY_ERROR("assembler", NOLOGMETA, "writer error");
+        #ifndef DEBUG
         assembler_dump(&ass);
+        #endif
         assembler_destroy(&ass);
         return 1;
     }
+
+    #ifdef DEBUG
     assembler_dump(&ass);
+    #endif
 
     assembler_destroy(&ass);
 
