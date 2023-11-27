@@ -291,7 +291,7 @@ if (ARGN) {\
             dynarr_byte_append(&ass->bytecode, &arg.regarg.opcode, 1);\
             } break;\
         case ARG_TYPE_LAB: {\
-            dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISLAB }, 1);\
+            dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISIMM }, 1);\
             dynarr_byte_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
             } break;\
         case ARG_TYPE_NONE: {\
