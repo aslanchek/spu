@@ -175,48 +175,33 @@ command_t _parse_cmd(uint8_t *c) {
 }
 
 
-/*
- * 8 бит
- *  000 00000
- *   ^^    ^
- *reg||imm  \ номер команды
- *
- */
-#define COMMANDMASK  0b00011111
-#define ARGUMENTMASK 0b11100000
-
-#define ISIMM        0b00100000 // imm - immediate constant
-#define ISREG        0b01000000
-#define ISMEM        0b10000000
-
-
-#define GETREG\
-    int *reg = NULL;\
+#define GETREG(VARNAME)\
+    int *VARNAME = NULL;\
     for (size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {\
         if (*(cp+1) == REGS_SET[i].opcode) {\
-            reg = spu->regs + i;\
+            VARNAME = spu->regs + i;\
             spu->pc += 1;\
             break;\
         }\
     }\
-    if (!reg) {\
+    if (!VARNAME) {\
         PRETTY_ERROR("spu", NOLOGMETA, "Unexpected register");\
         return 1;\
     }\
 
-#define GETARG\
-    int arg = 0;\
+#define GETARG(VARNAME)\
+    int VARNAME = 0;\
     switch ((*cp) & ARGUMENTMASK) {\
         case ISIMM: {\
             uint8_t toint[sizeof(int)];\
             memcpy(toint, cp + 1, sizeof(int));\
-            arg = *(int *)(toint);\
+            VARNAME = *(int *)(toint);\
             spu->pc += 4;\
         } break;\
         case ISREG: {\
             for (size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {\
                 if (*(cp + 1) == REGS_SET[i].opcode) {\
-                    arg = spu->regs[i];\
+                    VARNAME = spu->regs[i];\
                 }\
             }\
             spu->pc += 1;\
@@ -227,6 +212,9 @@ command_t _parse_cmd(uint8_t *c) {
             break;\
     }\
 
+#define POPSTACK(VARNAME)\
+    int VARNAME = stack_int_top(&spu->stack IF_VERBOSE(, LOGMETA));\
+    stack_int_pop(&spu->stack IF_VERBOSE(, LOGMETA));\
 
 #define GENERATE_COMMAND(NAME, OPCODE, ARGN, ...)\
     case OPCODE:\
@@ -288,8 +276,16 @@ int main(int argc, char *argv[]) {
 
     if (ret) {
         PRETTY_ERROR("spu", NOLOGMETA, "Runtime error");
+        #ifndef DEBUG
         SPU_dump(&Richard);
+        #endif
+        SPU_destroy(&Richard);
+        return 1;
     }
+
+    #ifdef DEBUG
+    SPU_dump(&Richard);
+    #endif
 
 
     SPU_destroy(&Richard);

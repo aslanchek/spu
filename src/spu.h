@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 
-#define SIG (uint64_t []) { 0xBADC0FFE00000001U }
+#define SIG (uint64_t []) { 0xBADC0FFE00000002U }
 
 #include "../third-party/stack/stack.h"
 #include "log.h"

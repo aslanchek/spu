@@ -54,7 +54,7 @@ GENERATE_COMMAND(JA,  0b001000, 1, {
     POPSTACK(op2)
 
     if (op2 > op1) {
-        &spu->pc = arg;
+        spu->pc = arg;
     }
 })
 
@@ -65,7 +65,7 @@ GENERATE_COMMAND(JAE, 0b001001, 1, {
     POPSTACK(op2)
 
     if (op2 >= op1) {
-        &spu->pc = arg;
+        spu->pc = arg;
     }
 })
 
@@ -76,7 +76,7 @@ GENERATE_COMMAND(JB,  0b001010, 1, {
     POPSTACK(op2)
 
     if (op2 < op1) {
-        &spu->pc = arg;
+        spu->pc = arg;
     }
 })
 
@@ -87,7 +87,7 @@ GENERATE_COMMAND(JBE, 0b001011, 1, {
     POPSTACK(op2)
 
     if (op2 < op1) {
-        &spu->pc = arg;
+        spu->pc = arg;
     }
 })
 
@@ -98,7 +98,7 @@ GENERATE_COMMAND(JE,  0b001100, 1, {
     POPSTACK(op2)
 
     if (op2 == op1) {
-        &spu->pc = arg;
+        spu->pc = arg;
     }
 })
 
@@ -109,23 +109,19 @@ GENERATE_COMMAND(JNE, 0b001101, 1, {
     POPSTACK(op2)
 
     if (op2 != op1) {
-        &spu->pc = arg;
+        spu->pc = arg;
     }
 })
 
 GENERATE_COMMAND(JMP, 0b001110, 1, {
     GETARG(arg)
 
-    POPSTACK(op1)
-    POPSTACK(op2)
-
-    &spu->pc = arg;
+    spu->pc = arg;
 })
 
 GENERATE_COMMAND(JM,  0b001111, 1, {
     GETARG(arg)
 
-    POPSTACK(op1)
-    POPSTACK(op2)
+    spu->pc = arg;
 })
 
