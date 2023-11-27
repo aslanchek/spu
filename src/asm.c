@@ -1,13 +1,5 @@
-#include <assert.h>
-#include <ctype.h>
-#include <limits.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-
 #include "asm.h"
+#include "dynarr_int.h"
 #include "is.h"
 #include "log.h"
 
@@ -18,7 +10,9 @@ assembler assembler_init() {
         .tokens      = NULL,
         .numtok      = 0,
         .tc          = 0,
-        .bytecode    = dynarr_init(1),
+        .bytecode    = dynarr_byte_init(1),
+        .labels      = NULL,
+        .numlabels   = 0,
     };
 
     return new;
@@ -29,11 +23,17 @@ void assembler_destroy(assembler *ass) {
     assert(ass->tokens);
     assert(ass->bytecode.arr);
     assert(ass->tc == ass->numtok);
+    assert(ass->labels);
 
     free(ass->text);
     free(ass->tokens);
 
-    dynarr_destroy(&ass->bytecode);
+    for (size_t i = 0; i < ass->numlabels; i++) {
+        dynarr_int_destroy(&ass->labels[i].fxplocs);
+    }
+    free(ass->labels);
+
+    dynarr_byte_destroy(&ass->bytecode);
 
     bzero(ass, sizeof(assembler));
 }
@@ -58,13 +58,30 @@ void assembler_dump(assembler *ass) {
     fprintf(stderr, "+--------------\n"
                     "total tokens number = %zu\n", ass->numtok);
 
+
+    fprintf(stderr, "+--- LABELS ---\n");
+
+    for (size_t i = 0; i < ass->numlabels; i++) {
+        fprintf(stderr, "l%zu: \"%s\" [%03d]: ", i, ass->labels[i].name, ass->labels[i].addr);
+        for (size_t j = 0; j < ass->labels[i].fxplocs.size; j++) {
+            fprintf(stderr, "[%03d] ", dynarr_int_accss(&ass->labels[i].fxplocs, j) );
+        }
+        fprintf(stderr, "\n");
+    }
+
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "+----------------\n");
+
+
+
     fprintf(stderr, "+--- BYTECODE ---\n");
 
-    for (size_t i = 0; i < dynarr_size(&ass->bytecode); i++) {
+    for (size_t i = 0; i < dynarr_byte_size(&ass->bytecode); i++) {
         fprintf(stderr, "[%03zu] 0x%02x          ""0b"
                 BYTE2BIN_PATTERN " \n", i,
-                dynarr_accss(&ass->bytecode, i),
-                BYTE2BIN(dynarr_accss(&ass->bytecode, i)));
+                dynarr_byte_accss(&ass->bytecode, i),
+                BYTE2BIN(dynarr_byte_accss(&ass->bytecode, i)));
     }
 
     fprintf(stderr, "\n");
@@ -124,6 +141,8 @@ int assembler_loadtext(assembler *ass, char *source) {
 
     ass->tokens = calloc(ass->numtok, sizeof(char *));
 
+    // extracting tokens
+
     char delims[] = " \n\t";
 
     size_t nt = 0;
@@ -133,14 +152,43 @@ int assembler_loadtext(assembler *ass, char *source) {
         token = strtok(NULL, delims);
     }
 
+    // getting labels number
+    size_t numlabels = 0;
+
+    for (size_t i = 0; i < ass->numtok; i++) {
+        if (strchr(ass->tokens[i], ':')) {
+            numlabels++;
+        }
+    }
+
+    ass->labels = calloc(numlabels, sizeof(label_t));
+
+    // extracting labels
+    for (size_t i = 0; i < ass->numtok; i++) {
+        char *colon = NULL;
+        if ( ( colon = strchr(ass->tokens[i], ':') ) == ( ass->tokens[i] + strlen(ass->tokens[i]) - 1 ) ) {
+            ass->labels[ass->numlabels++] = (label_t) { .name    = ass->tokens[i],
+                                                        .addr    = FXPVAL,
+                                                        .fxplocs = dynarr_int_init(1) };
+        }
+    }
+
     return 0;
 }
 
 
 command_t _parse_cmd(char *token) {
+    // check if label with : encountered
+    // "l1:"
+    char *colon = NULL;
+    if ( ( colon = strchr(token, ':') ) == ( token + strlen(token) - 1 ) ) {
+        return COMMAND_LABEL;
+    }
+
+
     for(size_t i = 0; i < SIZEOFARR(INSTRCTN_SET); i++) {
         if(strncasecmp(INSTRCTN_SET[i].name, token, strlen(INSTRCTN_SET[i].name)) == 0) {
-            PRETTY_LOG("assembler", NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
+            PRETTY_LOG("assembler translate", NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
             return INSTRCTN_SET[i];
         }
     }
@@ -148,12 +196,58 @@ command_t _parse_cmd(char *token) {
     return /*failed to parse*/COMMAND_NONE;
 }
 
+/*
+ *
+    // check if it is memory access
+    if ( token[0] == '[' && token[strlen(token)] == ']' ) {
+        // allowed: [reg] or [reg+-imm]
+        //      [rax]
+        //      [rax+7]
+        //      [rax-5]
+        //
+        // restricted:
+        //      [rax+5.5]
+        //      [8+rax]
+        //      [-18+rax]
+        //      [-rax]
+        //      [+rax]
+        PRETTY_LOG("assembler", NOLOGMETA, "memory access");
 
-arg_t _parse_arg(char *token) {
+        char *op = NULL;
+
+        op = strchr(token, '+');
+        if (op) {
+
+        }
+
+        op = strchr(token, '-');
+        if (op) {
+
+        }
+
+        if (NULL) {
+
+        }
+
+    }
+
+ *
+ */
+
+arg_t _parse_arg(char *token, assembler *ass) {
+    // check if arg is label
+    for (size_t i = 0; i < ass->numlabels; i++) {
+        if (strncasecmp(ass->labels[i].name, token, strlen(token)) == 0) {
+            PRETTY_LOG("assembler translate", NOLOGMETA, "label argument encountered: %s", ass->labels[i].name);
+            dynarr_int_append(&ass->labels[i].fxplocs, ass->bytecode.size + 1);
+            return (const arg_t) { .type = ARG_TYPE_LAB, .intarg = FXPVAL };
+        }
+    }
+
     // check if arg is register
     for(size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
         if (strncasecmp(REGS_SET[i].name, token, strlen(REGS_SET[i].name)) == 0) {
-            PRETTY_LOG("assembler", NOLOGMETA, "\"%s\" encountered", REGS_SET[i].name);
+            PRETTY_LOG("assembler translate", NOLOGMETA, "\"%s\" encountered", REGS_SET[i].name);
             return (const arg_t) { .type = ARG_TYPE_REG, .regarg = REGS_SET[i] };
         }
     }
@@ -183,25 +277,29 @@ arg_t _parse_arg(char *token) {
 
 #define WRITE_CMD(ARGN)\
 if (ARGN) {\
-    const arg_t arg = _parse_arg(ass->tokens[ass->tc++]);\
+    const arg_t arg = _parse_arg(ass->tokens[ass->tc++], ass);\
     switch ( arg.type ) {\
         case ARG_TYPE_INT: {\
-            dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b00100000 }, 1);\
-            dynarr_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
+            dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISIMM }, 1);\
+            dynarr_byte_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
             } break;\
         case ARG_TYPE_REG: {\
-            dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | 0b01000000 }, 1);\
-            dynarr_append(&ass->bytecode, &arg.regarg.opcode, 1);\
+            dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISREG }, 1);\
+            dynarr_byte_append(&ass->bytecode, &arg.regarg.opcode, 1);\
+            } break;\
+        case ARG_TYPE_LAB: {\
+            dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISLAB }, 1);\
+            dynarr_byte_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
             } break;\
         case ARG_TYPE_NONE: {\
-            PRETTY_ERROR("assembler", NOLOGMETA, "argument parse error: %s", ass->tokens[--(ass->tc)]);\
+            PRETTY_ERROR("assembler translate", NOLOGMETA, "argument parse error: %s", ass->tokens[--(ass->tc)]);\
             return 1;\
             } break;\
         default:\
             break;\
     }\
 } else {\
-    dynarr_append(&ass->bytecode, (uint8_t []) { toexecute.opcode }, 1);\
+    dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode }, 1);\
 }\
 
 #define GENERATE_COMMAND(NAME, OPCODE, ARGN, ...)\
@@ -209,7 +307,7 @@ if (ARGN) {\
         WRITE_CMD(ARGN)\
         break;\
 
-int assembler_translate(assembler *ass, const char *output) {
+int assembler_translate(assembler *ass) {
     assert(ass->text);
     assert(ass->textsize != 0);
     assert(ass->tokens);
@@ -218,7 +316,7 @@ int assembler_translate(assembler *ass, const char *output) {
     // TODO: validate dynarr
     assert(ass->bytecode.arr);
 
-    PRETTY_LOG("assembler", NOLOGMETA, "Running text translator...");
+    PRETTY_LOG("assembler translate", NOLOGMETA, "Running text translator...");
 
     while (ass->tc < ass->numtok) {
         char *currtok = ass->tokens[ass->tc++];
@@ -227,8 +325,23 @@ int assembler_translate(assembler *ass, const char *output) {
 
         switch (toexecute.cmd_code) {
             case COMMANDS_NONE: {
-                PRETTY_ERROR("assembler", NOLOGMETA, "command parse error: %s", ass->tokens[--(ass->tc)]);\
+                PRETTY_ERROR("assembler translate", NOLOGMETA, "command parse error: %s", ass->tokens[--(ass->tc)]);
                 return 1;
+            } break;
+
+            case COMMANDS_LABEL: {
+                PRETTY_LOG("assembler translate", NOLOGMETA, "label encountered: ", currtok);
+
+                for (size_t i = 0; i < ass->numlabels; i++) {
+                    if (strncasecmp(currtok, ass->labels[i].name, strlen(ass->labels[i].name)) == 0) {
+                        if (ass->labels[i].addr != FXPVAL) {
+                            PRETTY_ERROR("assembler translate", NOLOGMETA, "label redefinition: %s", ass->tokens[--(ass->tc)]);
+                            return 1;
+                        }
+
+                        ass->labels[i].addr = ass->bytecode.size;
+                    }
+                }
             } break;
 
             #include "is.dsl"
@@ -238,23 +351,29 @@ int assembler_translate(assembler *ass, const char *output) {
         }
     }
 
+    return 0;
+}
+
+#undef GENERATE_COMMAND
+
+int assembler_write(assembler *ass, const char *output) {
     int fd = open(output, O_WRONLY|O_CREAT, 0644);
     if (fd < 0) {
-        PRETTY_ERROR("assembler", LOGMETA, "open()");
+        PRETTY_ERROR("assembler write", LOGMETA, "open()");
         close(fd);
         return 1;
     }
     
     ssize_t ret = write(fd, SIG, sizeof(SIG));
     if (ret < 0) {
-        PRETTY_ERROR("assembler", LOGMETA, "write()");
+        PRETTY_ERROR("assembler write", LOGMETA, "write()");
         close(fd);
         return 1;
     }
 
-    ret = write(fd, ass->bytecode.arr, dynarr_size(&ass->bytecode));
+    ret = write(fd, ass->bytecode.arr, dynarr_byte_size(&ass->bytecode));
     if (ret < 0) {
-        PRETTY_ERROR("assembler", LOGMETA, "write()");
+        PRETTY_ERROR("assembler write", LOGMETA, "write()");
         close(fd);
         return 1;
     }
@@ -263,8 +382,6 @@ int assembler_translate(assembler *ass, const char *output) {
 
     return 0;
 }
-
-#undef GENERATE_COMMAND
 
 
 int main(int argc, char *argv[]) {
@@ -287,7 +404,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    ret = assembler_translate(&ass, /*output file*/argv[2]);
+    ret = assembler_translate(&ass);
 
     if (ret) {
         PRETTY_ERROR("assembler", NOLOGMETA, "translator error");
@@ -295,6 +412,27 @@ int main(int argc, char *argv[]) {
         assembler_destroy(&ass);
         return 1;
     }
+
+    /*
+    ret = assembler_link(&ass);
+
+    if (ret) {
+        PRETTY_ERROR("assembler", NOLOGMETA, "linker error");
+        assembler_dump(&ass);
+        assembler_destroy(&ass);
+        return 1;
+    }
+    */
+
+    ret = assembler_write(&ass, /*output file*/argv[2]);
+
+    if (ret) {
+        PRETTY_ERROR("assembler", NOLOGMETA, "writer error");
+        assembler_dump(&ass);
+        assembler_destroy(&ass);
+        return 1;
+    }
+    assembler_dump(&ass);
 
     assembler_destroy(&ass);
 
