@@ -190,7 +190,7 @@ command_t _parse_cmd(char *token) {
 
 
     for(size_t i = 0; i < SIZEOFARR(INSTRCTN_SET); i++) {
-        if(strncasecmp(INSTRCTN_SET[i].name, token, strlen(INSTRCTN_SET[i].name)) == 0) {
+        if(strncasecmp(INSTRCTN_SET[i].name, token, strlen(token)) == 0) {
             PRETTY_LOG("assembler translate", NOLOGMETA, "\"%s\" encountered", INSTRCTN_SET[i].name);
             return INSTRCTN_SET[i];
         }
@@ -202,7 +202,25 @@ command_t _parse_cmd(char *token) {
 /*
  *
     // check if it is memory access
-    if ( token[0] == '[' && token[strlen(token)] == ']' ) {
+    // 
+    // push: 0b00000001
+    // pop : 0b00000010
+    //
+
+   ISIMM     0b00100000 // imm - immediate constant
+   ISREG     0b01000000
+   ISMEM     0b01100000 // [rax]
+   ISMEM_IMM 0b10000000 // [rax+-imm]
+
+    //
+    // 
+    //
+    // push [5] < кладёт на стек значение в 5-той ячейке в памяти
+    // pop  [5] < записывает в 5-тую ячейку в памяти верхушку стека. верхушка удаляется
+    //
+    // push [rax+-imm] < кладёт на стек значение в ячейке с индексом rax+-imm
+    // pop  [rax+-imm] < аналогично
+    //
         // allowed: [reg] or [reg+-imm]
         //      [rax]
         //      [rax+7]
@@ -214,30 +232,33 @@ command_t _parse_cmd(char *token) {
         //      [-18+rax]
         //      [-rax]
         //      [+rax]
-        PRETTY_LOG("assembler", NOLOGMETA, "memory access");
-
-        char *op = NULL;
-
-        op = strchr(token, '+');
-        if (op) {
-
-        }
-
-        op = strchr(token, '-');
-        if (op) {
-
-        }
-
-        if (NULL) {
-
-        }
-
-    }
-
  *
  */
 
 arg_t _parse_arg(char *token, assembler *ass) {
+    // check if arg is memory access
+    if ( token[0] == '[' && token[strlen(token)] == ']' ) {
+        PRETTY_LOG("assembler translate", NOLOGMETA, "memory access");
+
+        char *op = NULL;
+
+        op = strpbrk(token, "+-");
+        if (op) {
+            // [rax-1337]
+            //     ^    ^
+            char *endptr = NULL;
+            long arg = strtol(op + 1, &endptr, 10);
+
+            if (endptr == strchr(op, ']')) {
+                return (arg_t) { .type = ARG_TYPE_MEM, .moffarg = arg };
+            }
+        } else {
+            return (arg_t) { .type = ARG_TYPE_MEM, .moffarg = 0 };
+        }
+
+
+    }
+
     // check if arg is label
     for (size_t i = 0; i < ass->numlabels; i++) {
         if (strncasecmp(ass->labels[i].name, token, strlen(token)) == 0) {
@@ -249,7 +270,7 @@ arg_t _parse_arg(char *token, assembler *ass) {
 
     // check if arg is register
     for(size_t i = 0; i < SIZEOFARR(REGS_SET); i++) {
-        if (strncasecmp(REGS_SET[i].name, token, strlen(REGS_SET[i].name)) == 0) {
+        if (strncasecmp(REGS_SET[i].name, token, strlen(token)) == 0) {
             PRETTY_LOG("assembler translate", NOLOGMETA, "\"%s\" encountered", REGS_SET[i].name);
             return (const arg_t) { .type = ARG_TYPE_REG, .regarg = REGS_SET[i] };
         }
@@ -260,6 +281,7 @@ arg_t _parse_arg(char *token, assembler *ass) {
     long arg = strtol(token, &endptr, 10);
 
     if (endptr == strchr(token, '\0') && arg < INT_MAX && arg > INT_MIN ) {
+        PRETTY_LOG("assembler translate", NOLOGMETA, "instant constant encountered: %d", arg);
         return (arg_t) { .type = ARG_TYPE_INT, .intarg = (int)arg };
     }
 
@@ -292,6 +314,10 @@ if (ARGN) {\
             } break;\
         case ARG_TYPE_LAB: {\
             dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISIMM }, 1);\
+            dynarr_byte_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
+            } break;\
+        case ARG_TYPE_MEM: {\
+            dynarr_byte_append(&ass->bytecode, (uint8_t []) { toexecute.opcode | ISMEM }, 1);\
             dynarr_byte_append(&ass->bytecode, &arg.intarg, sizeof(arg.intarg));\
             } break;\
         case ARG_TYPE_NONE: {\
